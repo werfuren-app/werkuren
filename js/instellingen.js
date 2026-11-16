@@ -8,7 +8,7 @@ import { tariefCent } from './rekenen.js';
 import { BTW_KEUZES, btwKeuzeVan, btwUitKeuze } from './open.js';
 import { syncStatus, isGekoppeld, syncEmail, meldAan, meldAf, syncNu } from './sync.js';
 
-export const VERSIE = '0.6';
+export const VERSIE = '0.7';
 
 const SYNC_TEKST = {
   uit: 'Niet gekoppeld. Alles staat alleen op dit toestel.',
@@ -108,7 +108,30 @@ export function openKlant(k) {
     fout,
     h('div', { class: 'knoppen' },
       h('button', { class: 'knop', type: 'button', onclick: sluitBlad }, 'Annuleer'),
-      h('button', { class: 'knop donker', type: 'submit' }, 'Bewaar'))));
+      h('button', { class: 'knop donker', type: 'submit' }, 'Bewaar'),
+      !nieuw && h('button', { class: 'knop tekstknop breed', type: 'button', onclick: () => verwijderKlant(k, fout) }, 'Verwijder deze klant'))));
+}
+
+// Verwijderen is een soft delete: de klant verdwijnt uit de app, zijn uren en facturen blijven bewaard.
+async function verwijderKlant(k, fout) {
+  const regs = data.registraties.filter((r) => r.klant_id === k.id);
+  if (regs.some((r) => r.start && !r.einde && r.duur_min == null)) {
+    fout.textContent = 'Er loopt nog een blok voor deze klant. Stop het eerst.';
+    fout.hidden = false;
+    return;
+  }
+  const open = regs.filter((r) => !r.factuur_id).length;
+  const facturen = data.facturen.filter((f) => f.klant_id === k.id).length;
+  const bewaard = regs.length || facturen
+    ? ` Zijn ${regs.length} blokken en ${facturen} facturen blijven bewaard, maar zijn niet meer te zien.${open ? ` Let op: ${open} blokken zijn nog niet gefactureerd.` : ''}`
+    : '';
+  if (!(await vraag(`${k.naam} verwijderen?${bewaard}`, 'Verwijder', { gevaar: true }))) return;
+  await db.verwijder('klanten', k.id);
+  if (data.meta.pauze?.klant_id === k.id) await zetMeta('pauze', null);
+  await herlaad();
+  sluitBlad();
+  teken();
+  toast(`${k.naam} is verwijderd.`);
 }
 
 const importeer = eenTegelijk(async (bestand) => {
