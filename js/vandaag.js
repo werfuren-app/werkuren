@@ -1,8 +1,8 @@
-// Scherm "Vandaag": starten, pauzeren, stoppen en snel een duur toevoegen.
+// Scherm "Vandaag": starten, pauzeren en stoppen. Uren achteraf toevoegen gebeurt op Open uren.
 // Hier staan bewust geen bedragen, alleen uren.
 import { h, toast, eenTegelijk } from './hulpen.js';
 import { data, staat, klant, teken, nieuweRegistratie, bewaarRegistratie, verwijderRegistratie, zetMeta } from './staat.js';
-import { naarMin, isLopend, totalen, opStart } from './rekenen.js';
+import { naarMin, isLopend, totalen, opStart, duurMin } from './rekenen.js';
 import { fmtUmm, fmtDec, fmtTijd, fmtDagLang, fmtDatumKort, vandaagStr, nuTijd } from './formaat.js';
 import { openBewerk } from './bewerk.js';
 import { SOORT, blokRij } from './blokrij.js';
@@ -59,11 +59,11 @@ async function stop() {
   else teken();
 }
 
-function teller(soort, min, actief, onder) {
+// Eén helft onderaan de statuskaart: totaal van vandaag per soort.
+function teller(soort, min, actief) {
   return h('div', { class: `teller ${soort}${actief ? ' actief' : ''}` },
     h('p', null, SOORT[soort]),
-    h('div', { class: 'klok' }, fmtUmm(min)),
-    h('small', null, onder || ' '));
+    h('b', null, fmtUmm(min)));
 }
 
 export function tekenVandaag() {
@@ -74,7 +74,36 @@ export function tekenVandaag() {
   const dag = data.registraties.filter((r) => r.datum === vandaag && r.klant_id === staat.klantId).sort(opStart);
   const t = totalen(dag, nu);
   const looptHier = blok && blok.klant_id === staat.klantId && blok.datum === vandaag ? blok : null;
-  const sinds = looptHier ? `loopt sinds ${fmtTijd(looptHier.start)}` : '';
+  const gepauzeerd = !blok && pauze;
+
+  // De statuskaart: wat er nu gebeurt, in één oogopslag.
+  let toestand, klokMin, onder, soort = '';
+  if (looptHier) {
+    soort = looptHier.type;
+    toestand = `${SOORT[looptHier.type]} loopt`;
+    klokMin = duurMin(looptHier, nu);
+    onder = `sinds ${fmtTijd(looptHier.start)}`;
+  } else if (gepauzeerd) {
+    soort = 'pauze';
+    toestand = 'Pauze';
+    klokMin = Math.max(0, nu - naarMin(pauze.sinds));
+    onder = `sinds ${fmtTijd(pauze.sinds)}, tik op Hervat om verder te werken`;
+  } else if (dag.length) {
+    toestand = 'Gestopt';
+    klokMin = t.prodMin + t.onprodMin;
+    onder = `${fmtDec(t.prodMin + t.onprodMin)} uur gewerkt vandaag`;
+  } else {
+    toestand = 'Nog niet gestart';
+    klokMin = 0;
+    onder = 'Tik op Start productief om te beginnen';
+  }
+  const status = h('section', { class: `status ${soort}${looptHier ? ' loopt' : ''}`, 'aria-live': 'polite' },
+    h('p', { class: 'toestand' }, toestand),
+    h('div', { class: 'klok' }, fmtUmm(klokMin)),
+    h('p', { class: 'onder' }, onder),
+    h('div', { class: 'tellers' },
+      teller('productief', t.prodMin, looptHier?.type === 'productief'),
+      teller('onproductief', t.onprodMin, looptHier?.type === 'onproductief')));
 
   const meldingen = [];
   if (blok && blok.datum !== vandaag) {
@@ -83,29 +112,23 @@ export function tekenVandaag() {
   } else if (blok && !looptHier) {
     meldingen.push(h('p', { class: 'melding' }, `Er loopt een blok voor ${klant(blok.klant_id)?.naam ?? 'een andere klant'}.`));
   }
-  if (!blok && pauze) meldingen.push(h('p', { class: 'melding' }, `Pauze sinds ${fmtTijd(pauze.sinds)}. Tik op Hervat om verder te werken.`));
 
   const inhoud = [
-    h('div', { class: 'tellers' },
-      teller('productief', t.prodMin, looptHier?.type === 'productief', looptHier?.type === 'productief' && sinds),
-      teller('onproductief', t.onprodMin, looptHier?.type === 'onproductief', looptHier?.type === 'onproductief' && sinds)),
+    status,
     meldingen,
-    dag.length
-      ? h('ul', { class: 'lijst' }, dag.map((r) => blokRij(r, nu)))
-      : h('p', { class: 'leeg' }, 'Nog niets geregistreerd vandaag. Tik op Start productief om te beginnen.'),
-    dag.length > 0 && h('div', { class: 'totaal' }, h('span', null, 'Vandaag'), h('b', null, fmtUmm(t.prodMin + t.onprodMin))),
-    dag.length > 0 && h('p', { class: 'klein' }, `${fmtDec(t.prodMin + t.onprodMin)} uur samen`),
+    dag.length > 0 && h('ul', { class: 'lijst tijdlijn' }, dag.map((r) => blokRij(r, nu))),
   ];
 
-  const snel = (tekst, min) => h('button', { type: 'button',
-    onclick: () => openBewerk(nieuweRegistratie(min ? { duur_min: min } : {})) }, tekst);
+  const loopt = (type) => String(looptHier?.type === type);
   const duim = [
-    h('div', { class: 'snel' }, snel('30 min', 30), snel('1 u', 60), snel('4 u', 240), snel('Andere', 0)),
     h('div', { class: 'knoppen' },
-      h('button', { type: 'button', class: 'knop prod', onclick: () => actie(() => start('productief')) }, 'Start productief'),
-      h('button', { type: 'button', class: 'knop onprod', onclick: () => actie(() => start('onproductief')) }, 'Start onproductief'),
-      h('button', { type: 'button', class: 'knop', disabled: !blok && !pauze, onclick: () => actie(pauzeOfHervat) }, !blok && pauze ? 'Hervat' : 'Pauze'),
+      h('button', { type: 'button', class: 'knop prod', 'aria-pressed': loopt('productief'), onclick: () => actie(() => start('productief')) }, 'Start productief'),
+      h('button', { type: 'button', class: 'knop onprod', 'aria-pressed': loopt('onproductief'), onclick: () => actie(() => start('onproductief')) }, 'Start onproductief'),
+      h('button', { type: 'button', class: 'knop', disabled: !blok && !pauze, onclick: () => actie(pauzeOfHervat) }, gepauzeerd ? 'Hervat' : 'Pauze'),
       h('button', { type: 'button', class: 'knop stop', disabled: !blok && !pauze, onclick: () => actie(stop) }, 'Stop')),
   ];
   return { titel: fmtDagLang(vandaag), inhoud, duim };
 }
+
+// Voor Open uren: een blok achteraf toevoegen voor de gekozen klant.
+export const urenToevoegen = () => openBewerk(nieuweRegistratie({}));

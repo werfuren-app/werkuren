@@ -1,20 +1,42 @@
 // Start van de app: laadt de data, tekent het gekozen scherm en regelt de tabs.
-import { h, dialoogOpen, toast } from './hulpen.js';
+import { h, dialoogOpen, toast, openBlad, sluitBlad } from './hulpen.js';
+import { fmtGetal } from './formaat.js';
+import { tariefCent } from './rekenen.js';
 import { staat, data, herlaad, zetTeken, teken, zetMeta } from './staat.js';
 import { tekenVandaag } from './vandaag.js';
 import { tekenOpen } from './open.js';
 import { tekenFacturen } from './facturen.js';
-import { tekenInstellingen, tekenWelkom } from './instellingen.js';
+import { tekenInstellingen, tekenWelkom, openKlant } from './instellingen.js';
 import { startSync, zetStatusLuisteraar } from './sync.js';
 
 const SCHERMEN = { vandaag: tekenVandaag, open: tekenOpen, facturen: tekenFacturen, instellingen: tekenInstellingen };
 const $ = (id) => document.getElementById(id);
 
+// De klant bovenaan is een knop: tik om van klant te wisselen of een klant toe te voegen.
 function klantKiezer() {
-  if (data.klanten.length < 2) return h('span', { class: 'klant' }, data.klanten[0]?.naam ?? '');
-  return h('select', { class: 'klant', 'aria-label': 'Klant', value: staat.klantId,
-    onchange: async (ev) => { staat.klantId = ev.target.value; staat.factuurId = null; await zetMeta('klant', staat.klantId); teken(); } },
-    data.klanten.map((k) => h('option', { value: k.id }, k.naam)));
+  const huidig = data.klanten.find((k) => k.id === staat.klantId);
+  return h('button', { type: 'button', class: 'klant', 'aria-label': `Klant: ${huidig?.naam ?? ''}. Tik om te wisselen.`,
+    onclick: openKlantKeuze }, huidig?.naam ?? '');
+}
+
+function openKlantKeuze() {
+  const kies = async (id) => {
+    staat.klantId = id;
+    staat.factuurId = null;
+    await zetMeta('klant', id);
+    sluitBlad();
+    teken();
+  };
+  openBlad(h('div', null,
+    h('h2', null, 'Klant kiezen'),
+    h('ul', { class: 'lijst' }, data.klanten.map((k) => h('li', null,
+      h('button', { type: 'button', class: 'rij', 'aria-pressed': String(k.id === staat.klantId), onclick: () => kies(k.id) },
+        h('span', { class: 'wat' }, k.naam,
+          h('small', null, `€ ${fmtGetal(tariefCent(k.tarief_productief))} productief, € ${fmtGetal(tariefCent(k.tarief_onproductief))} onproductief`)),
+        h('span', { class: 'duur' }, k.id === staat.klantId ? 'Gekozen' : ''))))),
+    h('div', { class: 'knoppen' },
+      h('button', { type: 'button', class: 'knop', onclick: sluitBlad }, 'Sluit'),
+      h('button', { type: 'button', class: 'knop donker', onclick: () => openKlant(null) }, 'Klant toevoegen'))));
 }
 
 function tekenScherm() {

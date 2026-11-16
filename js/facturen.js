@@ -3,7 +3,7 @@ import { h, keuze, veld, openBlad, sluitBlad, vraag, toast, kopieer, eenTegelijk
 import * as db from './db.js';
 import { data, staat, klant, herlaad, teken } from './staat.js';
 import { totalen, factuurTotaal, perDag } from './rekenen.js';
-import { fmtUmm, fmtGetal, fmtEuro, fmtDag, periodeTekst } from './formaat.js';
+import { fmtUmm, fmtGetal, fmtEuro, fmtDag, periodeTekst, volgendNummer } from './formaat.js';
 import { bedragenLijst, btwKeuzeVan, btwUitKeuze, BTW_KEUZES } from './open.js';
 
 const regsVan = (f) => data.registraties.filter((r) => r.factuur_id === f.id);
@@ -14,16 +14,47 @@ export function tekenFacturen() {
   return factuur ? tekenFactuur(factuur) : tekenLijst();
 }
 
+// Som van alle facturen van één klant (excl. btw, btw, incl. btw), in centen.
+function klantTotaal(klantId) {
+  const som = { aantal: 0, exclCent: 0, btwCent: 0, inclCent: 0 };
+  for (const f of data.facturen.filter((x) => x.klant_id === klantId)) {
+    const t = factuurTotaal(regsVan(f), f);
+    som.aantal++;
+    som.exclCent += t.exclCent;
+    som.btwCent += t.btwCent;
+    som.inclCent += t.inclCent;
+  }
+  return som;
+}
+
 function tekenLijst() {
+  const k = klant(staat.klantId);
   const lijst = data.facturen.filter((f) => f.klant_id === staat.klantId).sort((a, b) => b.periode_tot.localeCompare(a.periode_tot) || b.volgnr - a.volgnr);
+  const som = klantTotaal(staat.klantId);
+  const andere = data.klanten.filter((x) => klantTotaal(x.id).aantal > 0);
   const inhoud = lijst.length
-    ? [h('ul', { class: 'lijst' }, lijst.map((f) => {
-      const totaal = factuurTotaal(regsVan(f), f);
-      return h('li', null, h('button', { type: 'button', class: 'rij', onclick: () => { staat.factuurId = f.id; teken(); } },
-        h('span', { class: 'wat' }, naamVan(f), h('small', null, `${periodeTekst(f.periode_van, f.periode_tot)}${f.status === 'open' ? ', ontgrendeld' : ''}`)),
-        h('span', { class: 'duur' }, fmtEuro(totaal.inclCent))));
-    }))]
-    : [h('p', { class: 'leeg' }, `Nog geen facturen voor ${klant(staat.klantId).naam}. Sluit er een af op het tabblad Open uren.`)];
+    ? [
+      h('section', { class: 'kaart' },
+        h('p', { class: 'kaart-titel' }, `${k.naam}, ${som.aantal} ${som.aantal === 1 ? 'factuur' : 'facturen'}`),
+        h('dl', { class: 'som' },
+          h('div', null, h('dt', null, 'Excl. btw'), h('dd', null, fmtEuro(som.exclCent))),
+          h('div', null, h('dt', null, 'Btw'), h('dd', null, fmtEuro(som.btwCent))),
+          h('div', { class: 'groot' }, h('dt', null, 'Totaal gefactureerd'), h('dd', null, fmtEuro(som.inclCent))))),
+      h('ul', { class: 'lijst' }, lijst.map((f) => {
+        const totaal = factuurTotaal(regsVan(f), f);
+        return h('li', null, h('button', { type: 'button', class: 'rij', onclick: () => { staat.factuurId = f.id; teken(); } },
+          h('span', { class: 'wat' }, naamVan(f), h('small', null, `${periodeTekst(f.periode_van, f.periode_tot)}${f.status === 'open' ? ', ontgrendeld' : ''}`)),
+          h('span', { class: 'duur' }, fmtEuro(totaal.inclCent))));
+      })),
+    ]
+    : [h('p', { class: 'leeg' }, `Nog geen facturen voor ${k.naam}. Sluit er een af op het tabblad Open uren.`)];
+  // Met meer dan één klant: per klant het totaal, en alles samen.
+  if (andere.length > 1) {
+    const totalen_ = andere.map((x) => ({ k: x, som: klantTotaal(x.id) }));
+    inhoud.push(h('h3', null, 'Alle klanten'), h('dl', { class: 'som' },
+      totalen_.map(({ k: x, som: s }) => h('div', null, h('dt', null, `${x.naam} (${s.aantal})`), h('dd', null, fmtEuro(s.inclCent)))),
+      h('div', { class: 'groot' }, h('dt', null, 'Samen, incl. btw'), h('dd', null, fmtEuro(totalen_.reduce((a, t) => a + t.som.inclCent, 0))))));
+  }
   return { titel: 'Facturen', inhoud, duim: [] };
 }
 
@@ -56,6 +87,9 @@ function tekenFactuur(f) {
 
   const inhoud = [
     h('button', { type: 'button', class: 'terug', onclick: () => { staat.factuurId = null; teken(); } }, 'Alle facturen'),
+    h('button', { type: 'button', class: 'nummer', onclick: () => wijzigFactuur() },
+      h('span', null, h('small', null, 'Factuurnummer'), h('b', null, f.nummer || 'Nog geen nummer')),
+      h('span', { class: 'k' }, 'Wijzig')),
     h('p', { class: 'klein' }, `${periode}, ${f.btw_verlegd ? 'btw verlegd' : `${f.btw_pct} % btw`}. ${afgesloten ? 'Vergrendeld.' : 'Ontgrendeld: de blokken zijn aanpasbaar.'}`),
     lijnen,
     bedragenLijst(totaal, btwKeuzeVan(f)),
@@ -96,7 +130,7 @@ function tekenFactuur(f) {
   }
   // Het nummer mag altijd aangepast worden; de btw alleen als de factuur ontgrendeld is.
   function wijzigFactuur() {
-    const nummer = h('input', { type: 'text', value: f.nummer || '', maxlength: 40 });
+    const nummer = h('input', { type: 'text', value: f.nummer || volgendNummer(data.facturen.filter((x) => x.id !== f.id)), maxlength: 40 });
     let btw = btwKeuzeVan(f);
     openBlad(h('form', { onsubmit: eenTegelijk(async () => {
       await db.bewaar('facturen', { ...f, nummer: nummer.value.trim(), ...(afgesloten ? {} : btwUitKeuze(btw)) });
@@ -115,9 +149,10 @@ function tekenFactuur(f) {
   }
 
   const duim = [h('div', { class: 'knoppen' },
-    h('button', { type: 'button', class: 'knop', onclick: wijzigFactuur }, afgesloten ? 'Nummer aanpassen' : 'Nummer en btw'),
+    // Het nummer wijzig je bovenaan; ontgrendeld kan hier ook de btw.
+    !afgesloten && h('button', { type: 'button', class: 'knop', onclick: wijzigFactuur }, 'Nummer en btw'),
     afgesloten
-      ? h('button', { type: 'button', class: 'knop', onclick: ontgrendel }, 'Ontgrendel')
+      ? h('button', { type: 'button', class: 'knop breed', onclick: ontgrendel }, 'Ontgrendel')
       : h('button', { type: 'button', class: 'knop donker', onclick: () => zetStatus('afgesloten') }, 'Vergrendel'),
     !afgesloten && h('button', { type: 'button', class: 'knop tekstknop breed', onclick: maakOngedaan }, 'Maak factuur ongedaan'))];
   return { titel: naamVan(f), inhoud, duim };

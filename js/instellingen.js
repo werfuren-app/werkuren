@@ -8,7 +8,7 @@ import { tariefCent } from './rekenen.js';
 import { BTW_KEUZES, btwKeuzeVan, btwUitKeuze } from './open.js';
 import { syncStatus, isGekoppeld, syncEmail, meldAan, meldAf, syncNu } from './sync.js';
 
-export const VERSIE = '0.5';
+export const VERSIE = '0.6';
 
 const SYNC_TEKST = {
   uit: 'Niet gekoppeld. Alles staat alleen op dit toestel.',
@@ -76,7 +76,7 @@ function syncBlok() {
   ];
 }
 
-function openKlant(k) {
+export function openKlant(k) {
   const nieuw = !k;
   k ??= { id: maakId(), naam: '', tarief_productief: '', tarief_onproductief: '', btw_pct: 0, btw_verlegd: true, deleted_at: null };
   let btw = btwKeuzeVan(k);

@@ -45,3 +45,20 @@ export function vandaagStr(nu = new Date()) {
 export function nuTijd(nu = new Date()) {
   return `${twee(nu.getHours())}:${twee(nu.getMinutes())}`;
 }
+
+// Stelt het volgende factuurnummer voor, op basis van de laatst gemaakte factuur (alle klanten samen,
+// zoals Dexxter nummert). Het laatste getal gaat één omhoog en houdt zijn voorloopnullen:
+// "2026-017" -> "2026-018", "F4" -> "F5". Begint het nummer met een vorig jaar ("2026-017" in 2027),
+// dan start de teller opnieuw: "2027-001". Geen bruikbaar vorig nummer: lege tekst.
+export function volgendNummer(facturen, jaar = new Date().getFullYear()) {
+  const metNummer = facturen.filter((f) => !f.deleted_at && (f.nummer || '').trim())
+    .sort((a, b) => (a.datum || '').localeCompare(b.datum || '')
+      || (a.created_at || '').localeCompare(b.created_at || '') || (a.volgnr || 0) - (b.volgnr || 0));
+  const laatste = metNummer.length ? metNummer[metNummer.length - 1].nummer.trim() : '';
+  const m = laatste.match(/^(.*?)(\d+)(\D*)$/);
+  if (!m) return '';
+  const [, voor, getal, na] = m;
+  const metJaar = voor.match(/^(\d{4})(\D+)$/);
+  if (metJaar && Number(metJaar[1]) < jaar) return `${jaar}${metJaar[2]}${'1'.padStart(getal.length, '0')}${na}`;
+  return `${voor}${String(Number(getal) + 1).padStart(getal.length, '0')}${na}`;
+}

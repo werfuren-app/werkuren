@@ -3,7 +3,8 @@ import { h, keuze, veld, openBlad, sluitBlad, eenTegelijk } from './hulpen.js';
 import * as db from './db.js';
 import { data, staat, klant, maakId, herlaad, teken } from './staat.js';
 import { isLopend, totalen, factuurTotaal, perDag, controles, opStart } from './rekenen.js';
-import { fmtUmm, fmtDec, fmtEuro, fmtDag, fmtDatumKort, vandaagStr } from './formaat.js';
+import { fmtUmm, fmtDec, fmtEuro, fmtDag, fmtDatumKort, vandaagStr, volgendNummer } from './formaat.js';
+import { urenToevoegen } from './vandaag.js';
 import { blokRij } from './blokrij.js';
 
 export const BTW_KEUZES = [['verlegd', 'Verlegd'], ['0', '0 %'], ['6', '6 %'], ['21', '21 %']];
@@ -52,10 +53,11 @@ export function tekenOpen() {
       ? h('div', { class: 'melding waarschuwing' }, h('strong', null, 'Kijk dit na'),
         h('ul', null, waarschuwingen.map((w) => h('li', null, `${fmtDatumKort(w.datum)}: ${w.tekst}`))))
       : h('p', { class: 'klein' }, 'Geen waarschuwingen.'),
-  ] : [h('p', { class: 'leeg' }, `Alles van ${k.naam} is gefactureerd. Nieuwe uren verschijnen hier.`)];
+  ] : [h('p', { class: 'leeg' }, `Alles van ${k.naam} is gefactureerd. Nieuwe uren verschijnen hier, of voeg ze toe met Uren toevoegen.`)];
 
   const duim = [h('div', { class: 'knoppen' },
-    h('button', { type: 'button', class: 'knop donker breed', disabled: !regs.length, onclick: openAfsluiten }, 'Factuur afsluiten'))];
+    h('button', { type: 'button', class: 'knop', onclick: urenToevoegen }, 'Uren toevoegen'),
+    h('button', { type: 'button', class: 'knop donker', disabled: !regs.length, onclick: openAfsluiten }, 'Factuur afsluiten'))];
   return { titel: 'Open uren', inhoud, duim };
 }
 
@@ -66,7 +68,8 @@ function openAfsluiten() {
   let btw = btwKeuzeVan(k);
   const van = h('input', { type: 'date', value: datums[0] });
   const tot = h('input', { type: 'date', value: datums[datums.length - 1] });
-  const nummer = h('input', { type: 'text', placeholder: 'Mag je later invullen', maxlength: 40 });
+  // Het volgende nummer staat al ingevuld; pas het aan als Dexxter een ander nummer geeft.
+  const nummer = h('input', { type: 'text', value: volgendNummer(data.facturen), placeholder: 'Mag je later invullen', maxlength: 40 });
   const overzicht = h('div');
   const fout = h('p', { class: 'fout', role: 'alert', hidden: true });
 
@@ -105,7 +108,7 @@ function openAfsluiten() {
     h('h2', null, `Factuur afsluiten voor ${k.naam}`),
     h('div', { class: 'twee' }, veld('Van', van), veld('Tot en met', tot)),
     h('div', { class: 'veld' }, h('span', null, 'Btw'), keuze(BTW_KEUZES, btw, (w) => { btw = w; toonOverzicht(); })),
-    veld('Factuurnummer uit Dexxter', nummer),
+    veld('Factuurnummer uit Dexxter', nummer, 'Voorgesteld: één hoger dan je vorige factuur. Je kunt het aanpassen.'),
     overzicht, fout,
     h('div', { class: 'knoppen' },
       h('button', { class: 'knop', type: 'button', onclick: sluitBlad }, 'Annuleer'),
