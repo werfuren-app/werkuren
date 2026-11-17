@@ -62,3 +62,29 @@ export function volgendNummer(facturen, jaar = new Date().getFullYear()) {
   if (metJaar && Number(metJaar[1]) < jaar) return `${jaar}${metJaar[2]}${'1'.padStart(getal.length, '0')}${na}`;
   return `${voor}${String(Number(getal) + 1).padStart(getal.length, '0')}${na}`;
 }
+
+// Begin, einde en naam van een dag, week (maandag tot zondag) of maand.
+// `stap` 0 = de huidige periode, -1 = de vorige, enz.
+export function periodeBereik(soort, stap = 0, vandaag = vandaagStr()) {
+  const [j, m, d] = vandaag.split('-').map(Number);
+  let van, tot;
+  if (soort === 'dag') {
+    van = tot = new Date(j, m - 1, d + stap);
+  } else if (soort === 'week') {
+    const weekdag = (new Date(j, m - 1, d).getDay() + 6) % 7;   // maandag = 0
+    van = new Date(j, m - 1, d - weekdag + 7 * stap);
+    tot = new Date(van.getFullYear(), van.getMonth(), van.getDate() + 6);
+  } else {
+    van = new Date(j, m - 1 + stap, 1);
+    tot = new Date(j, m + stap, 0);
+  }
+  const vanStr = vandaagStr(van), totStr = vandaagStr(tot);
+  let naam;
+  if (soort === 'dag') naam = stap === 0 ? 'Vandaag' : stap === -1 ? 'Gisteren' : fmtDag(vanStr);
+  else if (soort === 'week') naam = stap === 0 ? 'Deze week' : periodeTekst(vanStr, totStr);
+  else {
+    const maand = van.toLocaleDateString('nl-BE', { month: 'long', year: 'numeric' });
+    naam = maand.charAt(0).toUpperCase() + maand.slice(1);
+  }
+  return { van: vanStr, tot: totStr, naam };
+}

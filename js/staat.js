@@ -8,6 +8,8 @@ export const staat = {
   klantId: null,
   factuurId: null,        // geopende factuur op het tabblad Facturen
   openDagen: new Set(),   // opengeklapte dagen op het tabblad Open uren
+  periode: 'maand',       // overzicht op Open uren: dag, week of maand
+  periodeStap: 0,         // 0 = huidige periode, -1 = vorige, ...
 };
 
 export const data = { klanten: [], registraties: [], facturen: [], meta: {} };

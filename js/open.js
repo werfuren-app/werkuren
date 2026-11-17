@@ -2,8 +2,8 @@
 import { h, keuze, veld, openBlad, sluitBlad, eenTegelijk } from './hulpen.js';
 import * as db from './db.js';
 import { data, staat, klant, maakId, herlaad, teken } from './staat.js';
-import { isLopend, totalen, factuurTotaal, perDag, controles, opStart } from './rekenen.js';
-import { fmtUmm, fmtDec, fmtEuro, fmtDag, fmtDatumKort, vandaagStr, volgendNummer } from './formaat.js';
+import { isLopend, totalen, factuurTotaal, perDag, controles, opStart, duurMin } from './rekenen.js';
+import { fmtUmm, fmtDec, fmtEuro, fmtDag, fmtDatumKort, vandaagStr, volgendNummer, periodeBereik } from './formaat.js';
 import { urenToevoegen } from './vandaag.js';
 import { blokRij } from './blokrij.js';
 
@@ -33,6 +33,25 @@ function dagRij({ datum, blokken }) {
     open && h('ul', { class: 'lijst binnen' }, [...blokken].sort(opStart).map((r) => blokRij(r))));
 }
 
+// Overzicht van een dag, week of maand: alle uren van de klant, ook al gefactureerde.
+function overzicht() {
+  const soort = staat.periode, stap = staat.periodeStap;
+  const p = periodeBereik(soort, stap);
+  const regs = data.registraties.filter((r) => r.klant_id === staat.klantId && r.datum >= p.van && r.datum <= p.tot && !isLopend(r));
+  const t = totalen(regs);
+  const dagen = new Set(regs.filter((r) => r.type !== 'pauze' && duurMin(r) > 0).map((r) => r.datum)).size;
+  const zet = (s, st) => { staat.periode = s; staat.periodeStap = st; teken(); };
+  return h('section', { class: 'kaart overzicht' },
+    keuze([['dag', 'Dag'], ['week', 'Week'], ['maand', 'Maand']], soort, (w) => zet(w, 0)),
+    h('div', { class: 'periode' },
+      h('button', { type: 'button', class: 'vorige', 'aria-label': 'Vorige periode', onclick: () => zet(soort, stap - 1) }),
+      h('span', null, p.naam),
+      h('button', { type: 'button', class: 'volgende', 'aria-label': 'Volgende periode', disabled: stap >= 0, onclick: () => zet(soort, stap + 1) })),
+    h('div', { class: 'tegels' },
+      h('div', null, h('b', null, fmtUmm(t.prodMin + t.onprodMin)), h('span', null, `uren, ${dagen} ${dagen === 1 ? 'dag' : 'dagen'}`)),
+      h('div', { class: 'verdiend' }, h('b', null, fmtEuro(t.bedragCent)), h('span', null, 'verdiend, excl. btw'))));
+}
+
 export function tekenOpen() {
   const regs = openRegs();
   const k = klant(staat.klantId);
@@ -41,7 +60,7 @@ export function tekenOpen() {
   const factuur = factuurTotaal(regs, { afronden: true, btw_verlegd: true, btw_pct: 0 });
   const waarschuwingen = controles(regs, vandaagStr());
 
-  const inhoud = regs.length ? [
+  const inhoud = [overzicht(), ...(regs.length ? [
     h('ul', { class: 'lijst' }, perDag(regs).map(dagRij)),
     h('dl', { class: 'som' },
       h('div', null, h('dt', null, 'Productief'), h('dd', null, `${fmtUmm(t.prodMin)} (${fmtDec(t.prodMin)} u)`)),
@@ -53,11 +72,9 @@ export function tekenOpen() {
       ? h('div', { class: 'melding waarschuwing' }, h('strong', null, 'Kijk dit na'),
         h('ul', null, waarschuwingen.map((w) => h('li', null, `${fmtDatumKort(w.datum)}: ${w.tekst}`))))
       : h('p', { class: 'klein' }, 'Geen waarschuwingen.'),
-  ] : [h('p', { class: 'leeg' }, `Alles van ${k.naam} is gefactureerd. Nieuwe uren verschijnen hier, of voeg ze toe met Uren toevoegen.`)];
+  ] : [h('p', { class: 'leeg' }, `Alles van ${k.naam} is gefactureerd. Nieuwe uren verschijnen hier, of voeg ze toe met Uren toevoegen.`)])];
 
-  const snel = (tekst, min) => h('button', { type: 'button', onclick: () => urenToevoegen(min) }, tekst);
   const duim = [
-    h('div', { class: 'snel' }, snel('30 min', 30), snel('1 u', 60), snel('4 u', 240)),
     h('div', { class: 'knoppen' },
     h('button', { type: 'button', class: 'knop', onclick: () => urenToevoegen() }, 'Uren toevoegen'),
     h('button', { type: 'button', class: 'knop donker', disabled: !regs.length, onclick: openAfsluiten }, 'Factuur afsluiten')),
