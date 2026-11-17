@@ -8,7 +8,7 @@ import { tariefCent } from './rekenen.js';
 import { BTW_KEUZES, btwKeuzeVan, btwUitKeuze } from './open.js';
 import { syncStatus, isGekoppeld, syncEmail, meldAan, meldAf, syncNu } from './sync.js';
 
-export const VERSIE = '0.8';
+export const VERSIE = '0.9';
 
 const SYNC_TEKST = {
   uit: 'Niet gekoppeld. Alles staat alleen op dit toestel.',
@@ -194,8 +194,7 @@ export function tekenInstellingen() {
     h('ul', { class: 'lijst' }, data.klanten.map((k) => h('li', null,
       h('button', { type: 'button', class: 'rij', onclick: () => openKlant(k) },
         h('span', { class: 'wat' }, k.naam,
-          h('small', null, `€ ${fmtGetal(tariefCent(k.tarief_productief))} productief, € ${fmtGetal(tariefCent(k.tarief_onproductief))} onproductief, ${k.btw_verlegd ? 'btw verlegd' : `${k.btw_pct} % btw`}`)),
-        h('span', { class: 'duur' }, 'Wijzig'))))),
+          h('small', null, `€ ${fmtGetal(tariefCent(k.tarief_productief))} productief, € ${fmtGetal(tariefCent(k.tarief_onproductief))} onproductief, ${k.btw_verlegd ? 'btw verlegd' : `${k.btw_pct} % btw`}`)))))),
     h('button', { type: 'button', class: 'knop breed smal', onclick: () => openKlant(null) }, 'Klant toevoegen'),
     syncBlok(),
     h('h3', null, 'Gegevens'),
