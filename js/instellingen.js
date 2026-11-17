@@ -8,7 +8,7 @@ import { tariefCent } from './rekenen.js';
 import { BTW_KEUZES, btwKeuzeVan, btwUitKeuze } from './open.js';
 import { syncStatus, isGekoppeld, syncEmail, meldAan, meldAf, syncNu } from './sync.js';
 
-export const VERSIE = '1.0';
+export const VERSIE = '1.1';
 
 const SYNC_TEKST = {
   uit: 'Niet gekoppeld. Alles staat alleen op dit toestel.',
@@ -83,16 +83,24 @@ export function openKlant(k) {
   const naam = h('input', { type: 'text', value: k.naam, maxlength: 60, required: true });
   const prijs = (v) => h('input', { type: 'number', min: 0, step: '0.01', inputmode: 'decimal', value: v });
   const tp = prijs(k.tarief_productief), to = prijs(k.tarief_onproductief);
+  let camionette = k.camionette ? 'ja' : 'nee';
+  const tc = prijs(k.tarief_camionette ?? ''), tk = prijs(k.tarief_km ?? '');
+  const camVelden = h('div', { class: 'twee', hidden: camionette === 'nee' }, veld('Camionette (€/u)', tc), veld('Per gereden km (€/km)', tk));
   const fout = h('p', { class: 'fout', role: 'alert', hidden: true });
 
   const bewaar = eenTegelijk(async () => {
     const toon = (tekst) => { fout.textContent = tekst; fout.hidden = false; };
     const n = naam.value.trim();
     if (!n) return toon('Vul een naam in.');
-    if (data.klanten.some((x) => x.id !== k.id && x.naam.toLowerCase() === n.toLowerCase())) return toon('Er bestaat al een klant met deze naam.');
+    // Alleen bij een nieuwe of gewijzigde naam: anders kun je een klant die dubbel binnenkwam niet meer aanpassen.
+    const naamGewijzigd = n.toLowerCase() !== (k.naam || '').toLowerCase();
+    if (naamGewijzigd && data.klanten.some((x) => x.id !== k.id && x.naam.toLowerCase() === n.toLowerCase())) return toon('Er bestaat al een klant met deze naam.');
     const a = Number(tp.value), b = Number(to.value);
     if (tp.value === '' || to.value === '' || !(a >= 0) || !(b >= 0)) return toon('Vul twee geldige tarieven in.');
-    await db.bewaar('klanten', { ...k, naam: n, tarief_productief: a, tarief_onproductief: b, ...btwUitKeuze(btw) });
+    const c = Number(tc.value), km = Number(tk.value);
+    if (camionette === 'ja' && (tc.value === '' || tk.value === '' || !(c >= 0) || !(km >= 0))) return toon('Vul de twee tarieven voor de camionette in.');
+    await db.bewaar('klanten', { ...k, naam: n, tarief_productief: a, tarief_onproductief: b, ...btwUitKeuze(btw),
+      camionette: camionette === 'ja', tarief_camionette: camionette === 'ja' ? c : (k.tarief_camionette ?? 0), tarief_km: camionette === 'ja' ? km : (k.tarief_km ?? 0) });
     await herlaad();
     if (nieuw) { staat.klantId = k.id; await zetMeta('klant', k.id); }
     sluitBlad();
@@ -104,6 +112,9 @@ export function openKlant(k) {
     veld('Naam', naam),
     h('div', { class: 'twee' }, veld('Productief (€/u)', tp), veld('Onproductief (€/u)', to)),
     h('div', { class: 'veld' }, h('span', null, 'Btw, standaard voor deze klant'), keuze(BTW_KEUZES, btw, (w) => { btw = w; })),
+    h('div', { class: 'veld' }, h('span', null, 'Camionette gebruiken'),
+      keuze([['nee', 'Nee'], ['ja', 'Ja']], camionette, (w) => { camionette = w; camVelden.hidden = w === 'nee'; })),
+    camVelden,
     h('p', { class: 'klein' }, 'Nieuwe tarieven gelden voor nieuwe blokken. Bestaande blokken houden hun tarief.'),
     fout,
     h('div', { class: 'knoppen' },
@@ -194,7 +205,8 @@ export function tekenInstellingen() {
     h('ul', { class: 'lijst' }, data.klanten.map((k) => h('li', null,
       h('button', { type: 'button', class: 'rij', onclick: () => openKlant(k) },
         h('span', { class: 'wat' }, k.naam,
-          h('small', null, `€ ${fmtGetal(tariefCent(k.tarief_productief))} productief, € ${fmtGetal(tariefCent(k.tarief_onproductief))} onproductief, ${k.btw_verlegd ? 'btw verlegd' : `${k.btw_pct} % btw`}`)))))),
+          h('small', null, `€ ${fmtGetal(tariefCent(k.tarief_productief))} productief, € ${fmtGetal(tariefCent(k.tarief_onproductief))} onproductief, ${k.btw_verlegd ? 'btw verlegd' : `${k.btw_pct} % btw`}`
+            + (k.camionette ? `, camionette € ${fmtGetal(tariefCent(k.tarief_camionette || 0))}/u + € ${fmtGetal(tariefCent(k.tarief_km || 0))}/km` : ''))))))),
     h('button', { type: 'button', class: 'knop breed smal', onclick: () => openKlant(null) }, 'Klant toevoegen'),
     syncBlok(),
     h('h3', null, 'Gegevens'),

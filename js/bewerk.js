@@ -5,6 +5,7 @@ import { naarMin, isLopend, dagenTussen, VOLGORDE_DAGEN } from './rekenen.js';
 import { vandaagStr, fmtDatum } from './formaat.js';
 
 const TYPES = [['productief', 'Productief'], ['onproductief', 'Onproductief'], ['pauze', 'Pauze']];
+const TYPES_CAM = [...TYPES, ['camionette', 'Camionette']];
 
 export function openBewerk(reg, melding = '') {
   if (isVergrendeld(reg)) {
@@ -25,6 +26,10 @@ export function openBewerk(reg, melding = '') {
     data.klanten.map((k) => h('option', { value: k.id }, k.naam)));
   const omschrijving = h('input', { type: 'text', value: reg.omschrijving || '', placeholder: 'Bv. Lassen, Inladen', maxlength: 200 });
   const fout = h('p', { class: 'fout', role: 'alert', hidden: true });
+  const kmGetal = (v) => h('input', { type: 'number', min: 0, step: 1, inputmode: 'numeric', value: v ?? '' });
+  const kmStart = kmGetal(reg.km_start), kmEinde = kmGetal(reg.km_einde);
+  const kmVelden = h('div', { class: 'twee' }, veld('Begin km', kmStart), veld('Eind km', kmEinde));
+  kmVelden.hidden = type !== 'camionette';
 
   const metTijden = h('div', { class: 'twee' },
     veld('Start', start),
@@ -38,6 +43,12 @@ export function openBewerk(reg, melding = '') {
   const bewaar = eenTegelijk(async () => {
     fout.hidden = true;
     const v = { ...reg, type, datum: datum.value, klant_id: klantKeuze.value, omschrijving: omschrijving.value.trim() };
+    if (type === 'camionette') {
+      const getal = (inp) => (inp.value === '' ? null : Math.round(Number(inp.value)));
+      v.km_start = getal(kmStart); v.km_einde = getal(kmEinde);
+      if ([v.km_start, v.km_einde].some((x) => x != null && !(x >= 0))) return toonFout('Vul een geldige kilometerstand in.');
+      if (v.km_start != null && v.km_einde != null && v.km_einde < v.km_start) return toonFout('De eindstand moet hoger zijn dan de beginstand.');
+    }
     if (!v.datum) return toonFout('Kies een datum.');
     if (wijze === 'tijden') {
       if (!start.value) return toonFout('Vul het startuur in.');
@@ -55,6 +66,8 @@ export function openBewerk(reg, melding = '') {
       const k = klant(v.klant_id);
       v.tarief_productief = k.tarief_productief;
       v.tarief_onproductief = k.tarief_onproductief;
+      v.tarief_camionette = k.tarief_camionette ?? 0;
+      v.tarief_km = k.tarief_km ?? 0;
     }
     // Controle op een datum die uit volgorde ligt (typfout).
     if (v.datum !== reg.datum || nieuw) {
@@ -82,10 +95,11 @@ export function openBewerk(reg, melding = '') {
     h('h2', null, nieuw ? 'Blok toevoegen' : 'Blok aanpassen'),
     melding && h('p', { class: 'melding' }, melding),
     veld('Datum', datum),
-    h('div', { class: 'veld' }, h('span', null, 'Soort'), keuze(TYPES, type, (w) => { type = w; })),
+    h('div', { class: 'veld' }, h('span', null, 'Soort'),
+      keuze(klant(reg.klant_id)?.camionette || type === 'camionette' ? TYPES_CAM : TYPES, type, (w) => { type = w; kmVelden.hidden = w !== 'camionette'; })),
     h('div', { class: 'veld' }, h('span', null, 'Invoer'),
       keuze([['tijden', 'Met uren'], ['duur', 'Alleen duur']], wijze, (w) => { wijze = w; toonWijze(); })),
-    metTijden, metDuur,
+    metTijden, metDuur, kmVelden,
     data.klanten.length > 1 && veld('Klant', klantKeuze),
     veld('Omschrijving', omschrijving),
     fout,

@@ -38,6 +38,7 @@ export function nieuweRegistratie(velden = {}) {
     id: maakId(), datum: vandaagStr(), start: null, einde: null, duur_min: null,
     type: 'productief', klant_id: k.id, omschrijving: '', binnen_dagblok: false,
     tarief_productief: k.tarief_productief, tarief_onproductief: k.tarief_onproductief,
+    tarief_camionette: k.tarief_camionette ?? 0, tarief_km: k.tarief_km ?? 0,
     factuur_id: null, camionette: false, km_start: null, km_einde: null, volgnr: 0, deleted_at: null,
     ...velden,
   };

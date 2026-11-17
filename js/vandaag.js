@@ -1,15 +1,16 @@
 // Scherm "Vandaag": starten, pauzeren en stoppen. Uren achteraf toevoegen gebeurt op Open uren.
 // Hier staan bewust geen bedragen, alleen uren.
-import { h, toast, eenTegelijk } from './hulpen.js';
+import { h, toast, eenTegelijk, camionetteIcoon } from './hulpen.js';
 import { data, staat, klant, teken, nieuweRegistratie, bewaarRegistratie, verwijderRegistratie, zetMeta } from './staat.js';
-import { naarMin, isLopend, totalen, opStart, duurMin } from './rekenen.js';
+import { naarMin, isLopend, totalen, opStart, duurMin, isCamionette, camionetteTotaal, kmVan } from './rekenen.js';
 import { fmtUmm, fmtDec, fmtTijd, fmtDagLang, fmtDatumKort, vandaagStr, nuTijd } from './formaat.js';
 import { openBewerk } from './bewerk.js';
 import { SOORT, blokRij } from './blokrij.js';
 
 // Start, Pauze en Stop lopen nooit door elkaar, ook niet bij dubbel tikken.
 const actie = eenTegelijk((fn) => fn());
-const lopendBlok = () => data.registraties.find(isLopend);
+// Het lopende werkblok; een camionetterit loopt los daarvan.
+const lopendBlok = () => data.registraties.find((r) => isLopend(r) && !isCamionette(r));
 
 // Sluit het lopende blok af op het huidige uur. Geeft false als dat niet kon.
 async function stopLopend(blok) {
@@ -115,6 +116,7 @@ export function tekenVandaag() {
 
   const inhoud = [
     status,
+    klant(staat.klantId)?.camionette && camionetteKaart(dag.filter(isCamionette), nu),
     meldingen,
     dag.length > 0 && h('ul', { class: 'lijst tijdlijn' }, dag.map((r) => blokRij(r, nu))),
   ];
@@ -128,6 +130,38 @@ export function tekenVandaag() {
       h('button', { type: 'button', class: 'knop stop', disabled: !blok && !pauze, onclick: () => actie(stop) }, 'Stop')),
   ];
   return { titel: fmtDagLang(vandaag), inhoud, duim };
+}
+
+// Camionette: een eigen teller die los van de werkuren loopt, ook tijdens een pauze.
+// De kilometerstanden vul je in de kaart zelf in; ze horen bij de laatste rit van vandaag.
+function camionetteKaart(ritten, nu) {
+  const loopt = ritten.find(isLopend);
+  const laatste = loopt || [...ritten].sort(opStart).pop();
+  const c = camionetteTotaal(ritten, nu);
+  const startStop = () => actie(async () => {
+    if (loopt) { await stopLopend(loopt); return; }
+    await bewaarRegistratie(nieuweRegistratie({ type: 'camionette', start: nuTijd() }));
+  });
+  const kmVeld = (label, veld) => h('label', { class: 'cam-veld' }, h('span', null, label),
+    h('input', { type: 'number', min: 0, step: 1, inputmode: 'numeric', value: laatste[veld] ?? '', placeholder: 'Stand',
+      onchange: async (ev) => {
+        const v = ev.target.value === '' ? null : Math.round(Number(ev.target.value));
+        if (v != null && !(v >= 0)) { toast('Vul een geldige kilometerstand in.'); return; }
+        await bewaarRegistratie({ ...laatste, [veld]: v });
+      } }));
+  let gereden = 'Vul de begin- en eindstand in';
+  if (laatste && laatste.km_start != null && laatste.km_einde != null) {
+    gereden = laatste.km_einde < laatste.km_start ? 'De eindstand is lager dan de beginstand' : `${kmVan(laatste)} km gereden`;
+  } else if (laatste && laatste.km_start != null) gereden = 'Vul de eindstand in bij aankomst';
+  return h('section', { class: `cam-kaart${loopt ? ' loopt' : ''}` },
+    h('div', { class: 'cam-kop' },
+      camionetteIcoon(),
+      h('div', { class: 'cam-tekst' },
+        h('b', { class: 'cam-klok' }, fmtUmm(c.min)),
+        h('small', null, loopt ? `Camionette loopt sinds ${fmtTijd(loopt.start)}` : ritten.length ? `Camionette, ${c.km} km vandaag` : 'Camionette')),
+      h('button', { type: 'button', class: `cam-knop${loopt ? ' stop' : ''}`, onclick: startStop }, loopt ? 'Stop' : 'Start')),
+    laatste && h('div', { class: 'cam-km' }, kmVeld('Begin km', 'km_start'), kmVeld('Eind km', 'km_einde')),
+    laatste && h('p', { class: `cam-gereden${laatste.km_einde != null && laatste.km_start != null && laatste.km_einde < laatste.km_start ? ' fout' : ''}` }, gereden));
 }
 
 // Voor Open uren: een blok achteraf toevoegen voor de gekozen klant.

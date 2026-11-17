@@ -72,6 +72,15 @@ export function eenTegelijk(fn) {
   };
 }
 
+// Klein camionette-icoon, in de tekstkleur.
+export function camionetteIcoon() {
+  const s = document.createElement('span');
+  s.className = 'cam-icoon';
+  s.setAttribute('aria-label', 'Camionette');
+  s.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 6.5h11v9h-11zM13.5 9.5h4l3 3.2v2.8h-7"/><circle cx="6.5" cy="17" r="1.8"/><circle cx="16.5" cy="17" r="1.8"/></svg>';
+  return s;
+}
+
 let toastTimer;
 export function toast(tekst) {
   const t = document.getElementById('toast');

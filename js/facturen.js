@@ -76,10 +76,13 @@ function tekenFactuur(f) {
   const periode = periodeTekst(f.periode_van, f.periode_tot);
   const afgesloten = f.status === 'afgesloten';
 
+  const OMSCHRIJVING = { productief: 'Productieve uren', onproductief: 'Onproductieve uren', camionette: 'Camionette', km: 'Camionette, gereden km' };
   const lijnen = totaal.lijnen.map((l) => h('section', { class: 'lijn' },
-    kopieerRij('Omschrijving', `${l.soort === 'productief' ? 'Productieve' : 'Onproductieve'} uren ${periode}`),
-    kopieerRij('Aantal (uur)', fmtGetal(l.aantalHonderdsten)),
-    kopieerRij('Prijs per uur, excl. btw', fmtGetal(l.prijsCent)),
+    kopieerRij('Omschrijving', `${OMSCHRIJVING[l.soort]} ${periode}`),
+    l.soort === 'km'
+      ? kopieerRij('Aantal (km)', String(l.aantalHonderdsten / 100))
+      : kopieerRij('Aantal (uur)', fmtGetal(l.aantalHonderdsten)),
+    kopieerRij(l.soort === 'km' ? 'Prijs per km, excl. btw' : 'Prijs per uur, excl. btw', fmtGetal(l.prijsCent)),
     f.btw_verlegd
       ? kopieerRij('Btw', 'Btw verlegd (0 %)', 'Btw verlegd')
       : kopieerRij('Btw %', `${Number(f.btw_pct) || 0} %`, String(Number(f.btw_pct) || 0)),

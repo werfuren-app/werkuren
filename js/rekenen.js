@@ -16,6 +16,15 @@ export function rondDeel(teller, noemer) {
   return Math.floor((2 * teller + noemer) / (2 * noemer));
 }
 
+// Een camionetterit is een eigen soort blok: hij telt niet mee bij de werkuren
+// en loopt los van productief, onproductief en pauze.
+export const isCamionette = (r) => r.type === 'camionette';
+
+// Gereden kilometers van een rit (0 zolang begin of einde ontbreekt, of als het einde kleiner is).
+export function kmVan(r) {
+  return r.km_start != null && r.km_einde != null && r.km_einde >= r.km_start ? r.km_einde - r.km_start : 0;
+}
+
 // Een blok loopt nog als het een start heeft, maar geen einde en geen duur.
 export const isLopend = (r) => !!r.start && !r.einde && r.duur_min == null;
 
@@ -32,7 +41,7 @@ export function duurMin(r, nuMin = null) {
 // - pauze of onproductief met uren: alleen als het binnen een productief blok
 //   van dezelfde dag en klant ligt. Tijd tússen twee blokken telt sowieso niet mee.
 export function berekenBinnenDagblok(r, dag) {
-  if (r.type === 'productief') return false;
+  if (r.type === 'productief' || isCamionette(r)) return false;
   if (r.duur_min != null) return r.type === 'pauze';
   if (!r.start || !r.einde) return false;
   const s = naarMin(r.start), e = naarMin(r.einde);
@@ -86,6 +95,19 @@ export function totalen(regs, nuMin = null) {
   return { prodMin, onprodMin, bedragCent: rondDeel(centMin, 60) };
 }
 
+// Camionette: uren × uurtarief + gereden km × km-tarief (tarieven vastgelegd op elke rit).
+export function camionetteTotaal(regs, nuMin = null) {
+  let min = 0, km = 0, centMin = 0, kmCent = 0;
+  for (const r of regs.filter(isCamionette)) {
+    const d = duurMin(r, nuMin), k = kmVan(r);
+    min += d;
+    km += k;
+    centMin += d * tariefCent(r.tarief_camionette || 0);
+    kmCent += k * tariefCent(r.tarief_km || 0);
+  }
+  return { min, km, bedragCent: rondDeel(centMin, 60) + kmCent };
+}
+
 // Factuurlijnen zoals ze in Dexxter komen: één lijn per soort en tarief.
 // afronden = true: aantal uren op 2 decimalen, bedrag = aantal × prijs (klopt met Dexxter).
 // afronden = false: exact gerekend (historiek F1–F4).
@@ -103,10 +125,31 @@ export function factuurTotaal(regs, factuur) {
     centMin += min * prijsCent;
     lijnen.push({ soort, prijsCent, min, aantalHonderdsten, bedragCent });
   }
-  lijnen.sort((a, b) => (a.soort === b.soort ? b.prijsCent - a.prijsCent : a.soort === 'productief' ? -1 : 1));
+  // Camionette: een lijn per uurtarief en een lijn per km-tarief.
+  const camUren = new Map(), camKm = new Map();
+  for (const r of regs.filter(isCamionette)) {
+    const tc = tariefCent(r.tarief_camionette || 0), tk = tariefCent(r.tarief_km || 0);
+    camUren.set(tc, (camUren.get(tc) || 0) + duurMin(r));
+    camKm.set(tk, (camKm.get(tk) || 0) + kmVan(r));
+  }
+  for (const [prijsCent, min] of camUren) {
+    if (min <= 0) continue;
+    const aantalHonderdsten = rondDeel(min * 100, 60);
+    const bedragCent = factuur.afronden ? rondDeel(aantalHonderdsten * prijsCent, 100) : rondDeel(min * prijsCent, 60);
+    centMin += min * prijsCent;
+    lijnen.push({ soort: 'camionette', prijsCent, min, aantalHonderdsten, bedragCent });
+  }
+  let kmCent = 0;
+  for (const [prijsCent, km] of camKm) {
+    if (km <= 0) continue;
+    kmCent += km * prijsCent;
+    lijnen.push({ soort: 'km', prijsCent, km, aantalHonderdsten: km * 100, bedragCent: km * prijsCent });
+  }
+  const volgorde = { productief: 0, onproductief: 1, camionette: 2, km: 3 };
+  lijnen.sort((a, b) => volgorde[a.soort] - volgorde[b.soort] || b.prijsCent - a.prijsCent);
   const exclCent = factuur.afronden
     ? lijnen.reduce((som, l) => som + l.bedragCent, 0)
-    : rondDeel(centMin, 60);
+    : rondDeel(centMin, 60) + kmCent;
   const btwPct = factuur.btw_verlegd ? 0 : Number(factuur.btw_pct) || 0;
   const btwCent = rondDeel(exclCent * btwPct, 100);
   return { lijnen, exclCent, btwCent, inclCent: exclCent + btwCent };
@@ -159,7 +202,8 @@ export function controles(regs, vandaag = null) {
   }
   // Overlappende blokken op dezelfde dag bij dezelfde klant.
   for (const { datum, blokken } of perDag(regs)) {
-    const metUren = blokken.filter((r) => r.start && r.einde && naarMin(r.einde) > naarMin(r.start));
+    // Een camionetterit mag gewoon samenvallen met werkuren.
+    const metUren = blokken.filter((r) => !isCamionette(r) && r.start && r.einde && naarMin(r.einde) > naarMin(r.start));
     for (let i = 0; i < metUren.length; i++) {
       for (let j = i + 1; j < metUren.length; j++) {
         const a = metUren[i], b = metUren[j];

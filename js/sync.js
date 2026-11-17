@@ -8,15 +8,16 @@ import { data, herlaad, teken, zetMeta } from './staat.js';
 // Volgorde telt: klanten eerst, dan facturen, dan registraties (verwijzingen).
 const VELDEN = {
   klanten: ['id', 'naam', 'tarief_productief', 'tarief_onproductief', 'btw_pct', 'btw_verlegd',
+    'camionette', 'tarief_camionette', 'tarief_km',
     'created_at', 'updated_at', 'deleted_at'],
   facturen: ['id', 'volgnr', 'nummer', 'klant_id', 'periode_van', 'periode_tot', 'datum', 'btw_pct',
     'btw_verlegd', 'afronden', 'status', 'created_at', 'updated_at', 'deleted_at'],
   registraties: ['id', 'datum', 'start', 'einde', 'duur_min', 'type', 'klant_id', 'omschrijving',
-    'binnen_dagblok', 'tarief_productief', 'tarief_onproductief', 'factuur_id', 'camionette',
+    'binnen_dagblok', 'tarief_productief', 'tarief_onproductief', 'tarief_camionette', 'tarief_km', 'factuur_id', 'camionette',
     'km_start', 'km_einde', 'volgnr', 'created_at', 'updated_at', 'deleted_at'],
 };
 const TABELLEN = Object.keys(VELDEN);
-const GETALLEN = ['tarief_productief', 'tarief_onproductief', 'btw_pct'];
+const GETALLEN = ['tarief_productief', 'tarief_onproductief', 'tarief_camionette', 'tarief_km', 'btw_pct'];
 const PAGINA = 1000;
 const PAKKET = 200;
 const OVERLAP_MS = 2 * 60 * 1000;

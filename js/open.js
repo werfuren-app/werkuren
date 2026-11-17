@@ -1,8 +1,8 @@
 // Scherm "Open uren": alles wat nog niet gefactureerd is, en het blad "Factuur afsluiten".
-import { h, keuze, veld, openBlad, sluitBlad, eenTegelijk } from './hulpen.js';
+import { h, keuze, veld, openBlad, sluitBlad, eenTegelijk, camionetteIcoon } from './hulpen.js';
 import * as db from './db.js';
 import { data, staat, klant, maakId, herlaad, teken } from './staat.js';
-import { isLopend, totalen, factuurTotaal, perDag, controles, opStart, duurMin } from './rekenen.js';
+import { isLopend, totalen, factuurTotaal, perDag, controles, opStart, duurMin, isCamionette, camionetteTotaal } from './rekenen.js';
 import { fmtUmm, fmtDec, fmtEuro, fmtDag, fmtDatumKort, vandaagStr, volgendNummer, periodeBereik } from './formaat.js';
 import { urenToevoegen } from './vandaag.js';
 import { blokRij } from './blokrij.js';
@@ -21,14 +21,21 @@ export function bedragenLijst(totaal, btwKeuze) {
     h('div', { class: 'groot' }, h('dt', null, 'Incl. btw'), h('dd', null, fmtEuro(totaal.inclCent))));
 }
 
+// Camionette van een dag op één regel: icoon, uren, km en prijs.
+function camionetteStuk(c) {
+  return h('span', { class: 'cam-dag' }, camionetteIcoon(), `${fmtUmm(c.min)} u · ${c.km} km · ${fmtEuro(c.bedragCent)}`);
+}
+
 function dagRij({ datum, blokken }) {
   const t = totalen(blokken);
+  const c = camionetteTotaal(blokken);
+  const metCam = blokken.some(isCamionette);
   const open = staat.openDagen.has(datum);
   const wissel = () => { open ? staat.openDagen.delete(datum) : staat.openDagen.add(datum); teken(); };
   return h('li', null,
     h('button', { type: 'button', class: 'rij', 'aria-expanded': String(open), onclick: wissel },
-      h('span', { class: 'tijd' }, fmtDag(datum)),
-      h('span', { class: 'wat' }, fmtEuro(t.bedragCent)),
+      h('span', { class: `tijd${metCam ? ' kort' : ''}` }, fmtDag(datum)),
+      metCam ? camionetteStuk(c) : h('span', { class: 'wat' }, fmtEuro(t.bedragCent)),
       h('span', { class: 'duur' }, fmtUmm(t.prodMin + t.onprodMin))),
     open && h('ul', { class: 'lijst binnen' }, [...blokken].sort(opStart).map((r) => blokRij(r))));
 }
@@ -39,7 +46,9 @@ function overzicht() {
   const p = periodeBereik(soort, stap);
   const regs = data.registraties.filter((r) => r.klant_id === staat.klantId && r.datum >= p.van && r.datum <= p.tot && !isLopend(r));
   const t = totalen(regs);
-  const dagen = new Set(regs.filter((r) => r.type !== 'pauze' && duurMin(r) > 0).map((r) => r.datum)).size;
+  const c = camionetteTotaal(regs);
+  const dagen = new Set(regs.filter((r) => (r.type === 'productief' || r.type === 'onproductief') && duurMin(r) > 0).map((r) => r.datum)).size;
+  const metCam = klant(staat.klantId)?.camionette || regs.some(isCamionette);
   const zet = (s, st) => { staat.periode = s; staat.periodeStap = st; teken(); };
   return h('section', { class: 'kaart overzicht' },
     keuze([['dag', 'Dag'], ['week', 'Week'], ['maand', 'Maand']], soort, (w) => zet(w, 0)),
@@ -48,14 +57,17 @@ function overzicht() {
       h('span', null, p.naam),
       h('button', { type: 'button', class: 'volgende', 'aria-label': 'Volgende periode', disabled: stap >= 0, onclick: () => zet(soort, stap + 1) })),
     h('div', { class: 'tegels' },
-      h('div', null, h('b', null, fmtUmm(t.prodMin + t.onprodMin)), h('span', null, `uren, ${dagen} ${dagen === 1 ? 'dag' : 'dagen'}`)),
-      h('div', { class: 'verdiend' }, h('b', null, fmtEuro(t.bedragCent)), h('span', null, 'verdiend, excl. btw'))));
+      h('div', null, h('b', null, fmtUmm(t.prodMin + t.onprodMin), h('em', null, ' u')), h('span', null, `gewerkt, ${dagen} ${dagen === 1 ? 'dag' : 'dagen'}`)),
+      h('div', { class: 'verdiend' }, h('b', null, fmtEuro(t.bedragCent + c.bedragCent)), h('span', null, 'verdiend, excl. btw')),
+      metCam && h('div', null, h('b', null, camionetteIcoon(), fmtUmm(c.min), h('em', null, ' u')), h('span', null, 'camionette')),
+      metCam && h('div', null, h('b', null, String(c.km), h('em', null, ' km')), h('span', null, 'gereden'))));
 }
 
 export function tekenOpen() {
   const regs = openRegs();
   const k = klant(staat.klantId);
   const t = totalen(regs);
+  const c = camionetteTotaal(regs);
   // Het bedrag zoals het op de factuur komt: uren afgerond op 2 decimalen × prijs.
   const factuur = factuurTotaal(regs, { afronden: true, btw_verlegd: true, btw_pct: 0 });
   const waarschuwingen = controles(regs, vandaagStr());
@@ -65,8 +77,9 @@ export function tekenOpen() {
     h('dl', { class: 'som' },
       h('div', null, h('dt', null, 'Productief'), h('dd', null, `${fmtUmm(t.prodMin)} (${fmtDec(t.prodMin)} u)`)),
       h('div', null, h('dt', null, 'Onproductief'), h('dd', null, `${fmtUmm(t.onprodMin)} (${fmtDec(t.onprodMin)} u)`)),
+      regs.some(isCamionette) && h('div', null, h('dt', null, 'Camionette'), h('dd', null, `${fmtUmm(c.min)} u, ${c.km} km, ${fmtEuro(c.bedragCent)}`)),
       h('div', { class: 'groot' }, h('dt', null, 'Te factureren'), h('dd', null, fmtEuro(factuur.exclCent)))),
-    factuur.exclCent !== t.bedragCent && h('p', { class: 'klein' },
+    factuur.exclCent !== t.bedragCent + c.bedragCent && h('p', { class: 'klein' },
       'Voor de factuur worden de uren afgerond op 2 decimalen, zoals in Dexxter. Daardoor kan het totaal enkele cent verschillen van de som van de dagen.'),
     waarschuwingen.length
       ? h('div', { class: 'melding waarschuwing' }, h('strong', null, 'Kijk dit na'),
