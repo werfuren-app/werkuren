@@ -127,6 +127,8 @@ h3 { font-size: 17px; margin: 22px 0 4px; }
 
 /* duimzone */
 #duim { padding: 10px 14px 12px; background: var(--wit); border-top: 2px solid var(--inkt); }
+.snel { display: flex; gap: 8px; margin-bottom: 10px; }
+.snel button { flex: 1; min-height: 48px; border: 2px solid var(--lijn); border-radius: 10px; font-weight: 650; background: var(--wit); }
 .knoppen { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .knop { min-height: 72px; border-radius: 14px; border: 2px solid var(--inkt); font-weight: 700; font-size: 19px; line-height: 1.15; padding: 8px; background: var(--wit); }
 .knop:active:not(:disabled) { transform: translateY(2px); }

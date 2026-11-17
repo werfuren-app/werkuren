@@ -55,9 +55,13 @@ export function tekenOpen() {
       : h('p', { class: 'klein' }, 'Geen waarschuwingen.'),
   ] : [h('p', { class: 'leeg' }, `Alles van ${k.naam} is gefactureerd. Nieuwe uren verschijnen hier, of voeg ze toe met Uren toevoegen.`)];
 
-  const duim = [h('div', { class: 'knoppen' },
-    h('button', { type: 'button', class: 'knop', onclick: urenToevoegen }, 'Uren toevoegen'),
-    h('button', { type: 'button', class: 'knop donker', disabled: !regs.length, onclick: openAfsluiten }, 'Factuur afsluiten'))];
+  const snel = (tekst, min) => h('button', { type: 'button', onclick: () => urenToevoegen(min) }, tekst);
+  const duim = [
+    h('div', { class: 'snel' }, snel('30 min', 30), snel('1 u', 60), snel('4 u', 240)),
+    h('div', { class: 'knoppen' },
+    h('button', { type: 'button', class: 'knop', onclick: () => urenToevoegen() }, 'Uren toevoegen'),
+    h('button', { type: 'button', class: 'knop donker', disabled: !regs.length, onclick: openAfsluiten }, 'Factuur afsluiten')),
+  ];
   return { titel: 'Open uren', inhoud, duim };
 }
 

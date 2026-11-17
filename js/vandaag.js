@@ -130,5 +130,5 @@ export function tekenVandaag() {
   return { titel: fmtDagLang(vandaag), inhoud, duim };
 }
 
-// Voor Open uren: een blok achteraf toevoegen voor de gekozen klant.
-export const urenToevoegen = () => openBewerk(nieuweRegistratie({}));
+// Voor Open uren: een blok achteraf toevoegen voor de gekozen klant, eventueel met een vooraf ingevulde duur.
+export const urenToevoegen = (min = 0) => openBewerk(nieuweRegistratie(min ? { duur_min: min } : {}));

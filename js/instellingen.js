@@ -8,7 +8,7 @@ import { tariefCent } from './rekenen.js';
 import { BTW_KEUZES, btwKeuzeVan, btwUitKeuze } from './open.js';
 import { syncStatus, isGekoppeld, syncEmail, meldAan, meldAf, syncNu } from './sync.js';
 
-export const VERSIE = '0.7';
+export const VERSIE = '0.8';
 
 const SYNC_TEKST = {
   uit: 'Niet gekoppeld. Alles staat alleen op dit toestel.',
