@@ -57,7 +57,17 @@ function bewaarSessie(c, j) {
 
 // Meldt aan met e-mail en wachtwoord. Het wachtwoord wordt nergens bewaard;
 // het toestel houdt alleen de sessie bij en verlengt die zelf.
+// Na 5 mislukte pogingen wacht de app 15 minuten. Dit remt raden op dit toestel af;
+// de echte grens ligt op de server (Supabase: Authentication > Rate Limits).
+export const MAX_POGINGEN = 5;
+const WACHTTIJD_MS = 15 * 60 * 1000;
+
 export async function meldAan(url, sleutel, email, wachtwoord) {
+  const slot = data.meta.login_slot;
+  if (slot?.tot > Date.now()) {
+    const min = Math.ceil((slot.tot - Date.now()) / 60000);
+    throw new Error(`Te veel mislukte pogingen. Probeer opnieuw over ${min} ${min === 1 ? 'minuut' : 'minuten'}.`);
+  }
   const basis = url.trim().replace(/\/+$/, '');
   if (!/^https:\/\/[^/]+$/.test(basis)) throw new Error('Het adres moet beginnen met https:// en mag geen pad bevatten.');
   let antwoord;
@@ -66,7 +76,19 @@ export async function meldAan(url, sleutel, email, wachtwoord) {
       method: 'POST', headers: kop(sleutel.trim()), body: JSON.stringify({ email: email.trim(), password: wachtwoord }),
     });
   } catch { throw new Error('Geen verbinding met Supabase. Kijk het adres en je netwerk na.'); }
+  if (antwoord.status === 429) throw new Error('Supabase blokkeert even: te veel aanmeldpogingen. Wacht enkele minuten.');
+  if (antwoord.status === 400 || antwoord.status === 401) {
+    const fouten = (slot?.fouten || 0) + 1;
+    if (fouten >= MAX_POGINGEN) {
+      await zetMeta('login_slot', { fouten: 0, tot: Date.now() + WACHTTIJD_MS });
+      throw new Error('E-mail of wachtwoord klopt niet. Na 5 mislukte pogingen kun je 15 minuten niet aanmelden.');
+    }
+    await zetMeta('login_slot', { fouten });
+    const over = MAX_POGINGEN - fouten;
+    throw new Error(`E-mail of wachtwoord klopt niet. Nog ${over} ${over === 1 ? 'poging' : 'pogingen'}.`);
+  }
   if (!antwoord.ok) throw new Error(`Aanmelden lukte niet: ${await foutTekst(antwoord)}.`);
+  await zetMeta('login_slot', null);
   // Een ander project of een ander account: begin de sync opnieuw, anders zou de bestaande
   // data nooit naar de nieuwe plek gaan.
   const vorige = config();

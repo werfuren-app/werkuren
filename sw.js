@@ -1,6 +1,6 @@
 // Service worker: zorgt dat de app ook zonder netwerk opent.
 // Verhoog VERSIE bij elke nieuwe versie van de app, dan halen toestellen de nieuwe bestanden op.
-const VERSIE = 'werkuren-v13';
+const VERSIE = 'werkuren-v14';
 const BESTANDEN = [
   './', 'index.html', 'style.css', 'manifest.webmanifest',
   'icons/icon-180.png', 'icons/icon-512.png',
